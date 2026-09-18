@@ -1,0 +1,32 @@
+# Build results
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+
+# SQLite databases
+*.db
+*.db-shm
+*.db-wal
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+
+# Rider
+.idea/
+
+# VS Code
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# NuGet
+*.nupkg
+**/packages/*
+!**/packages/build/
+
+# Logs
+*.log
