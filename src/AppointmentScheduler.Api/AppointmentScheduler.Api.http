@@ -1,0 +1,127 @@
+@AppointmentScheduler.Api_HostAddress = http://localhost:5239
+
+### Create a provider
+# @name createProvider
+POST {{AppointmentScheduler.Api_HostAddress}}/api/providers
+Content-Type: application/json
+
+{
+  "name": "Dr. Jane Smith",
+  "specialty": "Cardiology"
+}
+
+### List all providers
+GET {{AppointmentScheduler.Api_HostAddress}}/api/providers
+Accept: application/json
+
+### Get a single provider by id
+GET {{AppointmentScheduler.Api_HostAddress}}/api/providers/{{createProvider.response.body.$.id}}
+Accept: application/json
+
+### Book an appointment (09:00 - 09:30)
+# @name bookAppointment
+POST {{AppointmentScheduler.Api_HostAddress}}/api/appointments
+Content-Type: application/json
+
+{
+  "providerId": "{{createProvider.response.body.$.id}}",
+  "patientName": "John Doe",
+  "patientEmail": "john.doe@example.com",
+  "start": "2026-10-01T09:00:00Z",
+  "end": "2026-10-01T09:30:00Z",
+  "notes": "Annual checkup"
+}
+
+### CONFLICT: try to book an overlapping slot (09:15 - 09:45) with the same
+### provider. Provider.CanSchedule() rejects this before an Appointment is
+### even created -> expect 409 Conflict.
+POST {{AppointmentScheduler.Api_HostAddress}}/api/appointments
+Content-Type: application/json
+
+{
+  "providerId": "{{createProvider.response.body.$.id}}",
+  "patientName": "Jane Roe",
+  "patientEmail": "jane.roe@example.com",
+  "start": "2026-10-01T09:15:00Z",
+  "end": "2026-10-01T09:45:00Z",
+  "notes": "Overlaps with John Doe's 09:00-09:30 appointment - should be rejected"
+}
+
+### Book a back-to-back, non-conflicting slot (09:30 - 10:00) -> succeeds,
+### because TimeSlot.Overlaps() treats touching slots as non-overlapping.
+POST {{AppointmentScheduler.Api_HostAddress}}/api/appointments
+Content-Type: application/json
+
+{
+  "providerId": "{{createProvider.response.body.$.id}}",
+  "patientName": "Alex Nguyen",
+  "patientEmail": "alex.nguyen@example.com",
+  "start": "2026-10-01T09:30:00Z",
+  "end": "2026-10-01T10:00:00Z",
+  "notes": "Immediately follows John Doe's slot - no overlap"
+}
+
+### INVALID: try to book an appointment in the past -> expect 400 Bad Request
+POST {{AppointmentScheduler.Api_HostAddress}}/api/appointments
+Content-Type: application/json
+
+{
+  "providerId": "{{createProvider.response.body.$.id}}",
+  "patientName": "Past Patient",
+  "patientEmail": "past.patient@example.com",
+  "start": "2020-01-01T09:00:00Z",
+  "end": "2020-01-01T09:30:00Z"
+}
+
+### INVALID: end time before start time -> expect 400 Bad Request
+### (TimeSlot's constructor rejects this before the request even reaches
+### the provider's conflict check.)
+POST {{AppointmentScheduler.Api_HostAddress}}/api/appointments
+Content-Type: application/json
+
+{
+  "providerId": "{{createProvider.response.body.$.id}}",
+  "patientName": "Backwards Time",
+  "patientEmail": "backwards.time@example.com",
+  "start": "2026-10-01T10:00:00Z",
+  "end": "2026-10-01T09:00:00Z"
+}
+
+### Get the booked appointment by id
+GET {{AppointmentScheduler.Api_HostAddress}}/api/appointments/{{bookAppointment.response.body.$.id}}
+Accept: application/json
+
+### List every appointment booked with the provider
+GET {{AppointmentScheduler.Api_HostAddress}}/api/providers/{{createProvider.response.body.$.id}}/appointments
+Accept: application/json
+
+### Reschedule the first appointment to a later, still-free slot -> succeeds
+### and raises AppointmentRescheduledEvent.
+PUT {{AppointmentScheduler.Api_HostAddress}}/api/appointments/{{bookAppointment.response.body.$.id}}/reschedule
+Content-Type: application/json
+
+{
+  "start": "2026-10-01T11:00:00Z",
+  "end": "2026-10-01T11:30:00Z"
+}
+
+### Cancel an appointment -> raises AppointmentCancelledEvent and frees its slot
+POST {{AppointmentScheduler.Api_HostAddress}}/api/appointments/{{bookAppointment.response.body.$.id}}/cancel
+Content-Type: application/json
+
+{
+  "reason": "Patient requested cancellation"
+}
+
+### INVALID: cancel the same appointment again -> expect 400 Bad Request
+### (Appointment.Cancel rejects a second cancellation)
+POST {{AppointmentScheduler.Api_HostAddress}}/api/appointments/{{bookAppointment.response.body.$.id}}/cancel
+Content-Type: application/json
+
+{
+  "reason": "Trying again"
+}
+
+### NOT FOUND: request a provider that doesn't exist -> expect 404 Not Found
+GET {{AppointmentScheduler.Api_HostAddress}}/api/providers/00000000-0000-0000-0000-000000000000
+Accept: application/json
